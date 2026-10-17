@@ -1,0 +1,16 @@
+venv/
+**/__pycache__/
+*.pyc
+*.tar.gz
+*.zip
+*.log
+.env
+*.key
+*.pem
+data/
+captures/
+*.avi
+**/train_batch*.jpg
+**/val_batch*.jpg
+*.respaldo_*
+dashboard_edge_ai/datasets/

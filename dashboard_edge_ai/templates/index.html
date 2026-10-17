@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>EdgeVision Inclusivo</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header>
+    <div>
+      <p class="eyebrow">CLÚSTER DE EDGE COMPUTING</p>
+      <h1>EdgeVision Inclusivo</h1>
+      <p class="subtitle">Reconocimiento local de objetos y comunicación visual</p>
+    </div>
+    <span id="global-status" class="status online">Sistema activo</span>
+  </header>
+
+  <main>
+    <section class="mode-panel" aria-label="Funciones activas">
+      <button class="mode active">Reconocimiento de objetos · Activo</button>
+      <button class="mode active">Reconocimiento de señas · Activo</button>
+    </section>
+
+    <section class="dashboard-grid">
+      <article class="video-card panel">
+        <div class="panel-title">
+          <div>
+            <span class="live-dot"></span>
+            <strong>Cámara en tiempo real</strong>
+          </div>
+          <span id="camera-resolution">640 × 480</span>
+        </div>
+        <div class="video-wrapper">
+          <img src="{{ url_for('video_feed') }}" alt="Video con objetos y señas reconocidos en tiempo real">
+        </div>
+      </article>
+
+      <aside class="side-column">
+        <article class="panel result-card">
+          <p class="label">SEÑA RECONOCIDA</p>
+          <div id="sign-result" class="detections">
+            <span class="empty">Sin seña</span>
+          </div>
+        </article>
+
+        <article class="panel result-card">
+          <p class="label">OBJETOS DETECTADOS</p>
+          <div id="detections" class="detections">
+            <span class="empty">Esperando detecciones…</span>
+          </div>
+        </article>
+
+        <article class="panel">
+          <p class="label">INFERENCIA</p>
+          <div class="metric-grid">
+            <div><strong id="fps">0.0</strong><span>FPS</span></div>
+            <div><strong id="latency">0</strong><span>Latencia ms</span></div>
+            <div><strong id="frames">0</strong><span>Fotogramas</span></div>
+          </div>
+        </article>
+
+        <article class="panel">
+          <p class="label">NODOS DEL CLÚSTER</p>
+          <div id="nodes" class="nodes"></div>
+        </article>
+      </aside>
+    </section>
+
+    <section class="system-grid">
+      <article class="metric panel"><span>CPU</span><strong id="cpu">0 %</strong><div class="bar"><i id="cpu-bar"></i></div></article>
+      <article class="metric panel"><span>Memoria</span><strong id="memory">0 %</strong><div class="bar"><i id="memory-bar"></i></div></article>
+      <article class="metric panel"><span>Disco</span><strong id="disk">0 %</strong><div class="bar"><i id="disk-bar"></i></div></article>
+      <article class="metric panel"><span>Temperatura</span><strong id="temperature">-- °C</strong><div class="bar"><i id="temperature-bar"></i></div></article>
+    </section>
+  </main>
+
+  <footer>
+    <span>Procesamiento local · Sin envío de imágenes a la nube</span>
+    <span id="node-address">Nodo principal</span>
+  </footer>
+
+  <script>
+    const setMetric = (id, barId, value, suffix = "%") => {
+      document.getElementById(id).textContent = `${value}${suffix}`;
+      document.getElementById(barId).style.width = `${Math.min(Number(value), 100)}%`;
+    };
+
+    const formatSign = (sign, confidence) => {
+      const container = document.getElementById("sign-result");
+      const name = sign || "Sin seña";
+      const percentage = Math.round(Number(confidence || 0) * 100);
+
+      if (name === "Sin sena" || name === "Sin seña") {
+        container.innerHTML = '<span class="empty">Sin seña detectada</span>';
+        return;
+      }
+
+      container.innerHTML = `<span class="tag"><b>${name}</b> · ${percentage} %</span>`;
+    };
+
+    const formatDetections = (detected) => {
+      const container = document.getElementById("detections");
+      const entries = Object.entries(detected || {});
+      if (!entries.length) {
+        container.innerHTML = '<span class="empty">Sin objetos sobre el umbral</span>';
+        return;
+      }
+      container.innerHTML = entries
+        .sort((a, b) => b[1] - a[1])
+        .map(([name, count]) => `<span class="tag"><b>${count}</b> ${name}</span>`)
+        .join("");
+    };
+
+    const formatNodes = (node, workers) => {
+      const nodes = [node, ...(workers || [])];
+      document.getElementById("nodes").innerHTML = nodes.map(item => `
+        <div class="node-row">
+          <span class="node-light ${item.online ? "on" : "off"}"></span>
+          <div><strong>${item.name}</strong><small>${item.ip}</small></div>
+          <b class="node-state">${item.online ? "En línea" : "Pendiente"}</b>
+        </div>`).join("");
+    };
+
+    async function refreshStatus() {
+      try {
+        const response = await fetch("/api/status", {cache: "no-store"});
+        const data = await response.json();
+        setMetric("cpu", "cpu-bar", data.system.cpu, " %");
+        setMetric("memory", "memory-bar", data.system.memory, " %");
+        setMetric("disk", "disk-bar", data.system.disk, " %");
+        const temp = data.system.temperature ?? 0;
+        setMetric("temperature", "temperature-bar", temp, " °C");
+        document.getElementById("fps").textContent = data.vision.fps.toFixed(1);
+        document.getElementById("latency").textContent = data.vision.latency_ms.toFixed(0);
+        document.getElementById("frames").textContent = data.vision.frames.toLocaleString("es-GT");
+        document.getElementById("node-address").textContent = `${data.node.name} · ${data.node.ip}:5000`;
+        formatSign(data.vision.sign, data.vision.sign_confidence);
+        formatDetections(data.vision.detected);
+        formatNodes(data.node, data.workers);
+        document.getElementById("global-status").textContent = "Sistema activo";
+        document.getElementById("global-status").className = "status online";
+      } catch (error) {
+        document.getElementById("global-status").textContent = "Sin comunicación";
+        document.getElementById("global-status").className = "status offline";
+      }
+    }
+
+    refreshStatus();
+    setInterval(refreshStatus, 1000);
+  </script>
+</body>
+</html>
